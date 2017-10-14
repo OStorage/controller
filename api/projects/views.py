@@ -7,9 +7,10 @@ from rest_framework import status
 from rest_framework.exceptions import ParseError
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.views import APIView
-
+from paramiko.ssh_exception import SSHException, AuthenticationException
 from swiftclient import client as swift_client
 import logging
+import paramiko
 
 
 from api.common import JSONResponse, get_redis_connection, \
@@ -41,34 +42,32 @@ def projects(request, project_id=None):
         return JSONResponse(projetcs, status=status.HTTP_200_OK)
 
     if request.method == 'PUT':
-        try:
-            project_list = get_project_list()
-            project_name = project_list[project_id]
-            if project_name == settings.MANAGEMENT_ACCOUNT:
-                return JSONResponse("Management project could not be set as Crystal project",
-                                    status=status.HTTP_400_BAD_REQUEST)
+        project_list = get_project_list()
+        project_name = project_list[project_id]
+        if project_name == settings.MANAGEMENT_ACCOUNT:
+            return JSONResponse("Management project could not be set as Crystal project",
+                                status=status.HTTP_400_BAD_REQUEST)
 
+        try:
             # Set Manager as admin of the Crystal Project
             keystone_client = get_keystone_admin_auth()
-            admin_role_id, admin_user_id = get_admin_role_user_ids()
+            admin_role_id, reseller_admin_role_id, admin_user_id = get_admin_role_user_ids()
             keystone_client.roles.grant(role=admin_role_id, user=admin_user_id, project=project_id)
+            keystone_client.roles.grant(role=reseller_admin_role_id, user=admin_user_id, project=project_id)
 
             # Post Storlet and Dependency containers
             url, token = get_swift_url_and_token(project_name)
-            try:
-                swift_client.put_container(url, token, "storlet")
-                swift_client.put_container(url, token, "dependency")
-                headers = {'X-Account-Meta-Crystal-Enabled': True, 'X-Account-Meta-Storlet-Enabled': True}
-                swift_client.post_account(url, token, headers)
-            except:
-                pass
+            swift_client.put_container(url, token, "storlet")
+            swift_client.put_container(url, token, "dependency")
+            headers = {'X-Account-Meta-Crystal-Enabled': True, 'X-Account-Meta-Storlet-Enabled': True}
+            swift_client.post_account(url, token, headers)
+
             # Create project docker image
             create_docker_image(r, project_id)
-
             r.lpush('projects_crystal_enabled', project_id)
-            return JSONResponse("Data inserted correctly", status=status.HTTP_201_CREATED)
-        except RedisError:
-            return JSONResponse("Error inserting data", status=status.HTTP_400_BAD_REQUEST)
+            return JSONResponse("Crystal Project correctly enabled", status=status.HTTP_201_CREATED)
+        except:
+            return JSONResponse("Error Enabling Crystal Project", status=status.HTTP_400_BAD_REQUEST)
 
     if request.method == 'DELETE':
         try:
@@ -76,18 +75,23 @@ def projects(request, project_id=None):
             project_name = project_list[project_id]
 
             # Delete Storlet and Dependency containers
-            url, token = get_swift_url_and_token(project_name)
             try:
+                url, token = get_swift_url_and_token(project_name)
                 swift_client.delete_container(url, token, "storlet")
                 swift_client.delete_container(url, token, "dependency")
                 headers = {'X-Account-Meta-Crystal-Enabled': '', 'X-Account-Meta-Storlet-Enabled': ''}
                 swift_client.post_account(url, token, headers)
             except:
                 pass
+
             # Delete Manager as admin of the Crystal Project
             keystone_client = get_keystone_admin_auth()
-            admin_role_id, admin_user_id = get_admin_role_user_ids()
-            keystone_client.roles.revoke(role=admin_role_id, user=admin_user_id, project=project_id)
+            admin_role_id, reseller_admin_role_id, admin_user_id = get_admin_role_user_ids()
+            try:
+                keystone_client.roles.revoke(role=admin_role_id, user=admin_user_id, project=project_id)
+                keystone_client.roles.revoke(role=reseller_admin_role_id, user=admin_user_id, project=project_id)
+            except:
+                pass
 
             # Delete project docker image
             delete_docker_image(r, project_id)
@@ -112,14 +116,72 @@ def projects(request, project_id=None):
 
 def create_docker_image(r, project_id):
     nodes = r.keys('*_node:*')
+    already_created = list()
     for node in nodes:
         node_data = r.hgetall(node)
+        node_ip = node_data['ip']
+        if node_ip not in already_created:
+            if node_data['ssh_access']:
+                ssh_user = node_data['ssh_username']
+                ssh_password = node_data['ssh_password']
+                ssh_client = paramiko.SSHClient()
+                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+                try:
+                    ssh_client.connect(node_ip, username=ssh_user, password=ssh_password)
+                except AuthenticationException:
+                    r.hset(node, 'ssh_access', False)
+                    ssh_client.close()
+                    logger.error('An error occurred connecting to: '+node)
+                    raise AuthenticationException('An error occurred connecting to: '+node)
+
+                try:
+                    command = 'sudo docker tag '+settings.STORLET_DOCKER_IMAGE+' '+project_id[0:13]
+                    ssh_client.exec_command(command)
+                    ssh_client.close()
+                    already_created.append(node_ip)
+                except SSHException:
+                    ssh_client.close()
+                    logger.error('An error occurred creating the Docker image in: '+node)
+                    raise SSHException('An error occurred creating the Docker image in: '+node)
+            else:
+                logger.error('An error occurred connecting to: '+node)
+                raise AuthenticationException('An error occurred connecting to: '+node)
 
 
 def delete_docker_image(r, project_id):
     nodes = r.keys('*_node:*')
+    already_created = list()
     for node in nodes:
         node_data = r.hgetall(node)
+        node_ip = node_data['ip']
+        if node_ip not in already_created:
+            if node_data['ssh_access']:
+                ssh_user = node_data['ssh_username']
+                ssh_password = node_data['ssh_password']
+                ssh_client = paramiko.SSHClient()
+                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+                try:
+                    ssh_client.connect(node_ip, username=ssh_user, password=ssh_password)
+                except AuthenticationException:
+                    r.hset(node, 'ssh_access', False)
+                    ssh_client.close()
+                    logger.error('An error occurred connecting to: '+node)
+                    raise AuthenticationException('An error occurred connecting to: '+node)
+
+                try:
+                    command = 'sudo docker rmi -f '+project_id[0:13]
+                    ssh_client.exec_command(command)
+                    ssh_client.close()
+                    already_created.append(node_ip)
+                except SSHException:
+                    ssh_client.close()
+                    logger.error('An error occurred creating the Docker image in: '+node)
+                    raise SSHException('An error occurred creating the Docker image in: '+node)
+            else:
+                logger.error('An error occurred connecting to: '+node)
+                raise AuthenticationException('An error occurred connecting to: '+node)
 
 
 #
