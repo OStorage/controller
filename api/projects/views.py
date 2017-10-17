@@ -11,7 +11,7 @@ from paramiko.ssh_exception import SSHException, AuthenticationException
 from swiftclient import client as swift_client
 import logging
 import paramiko
-
+import json
 
 from api.common import JSONResponse, get_redis_connection, \
     get_project_list, get_keystone_admin_auth, \
@@ -199,11 +199,12 @@ def add_projects_group(request):
 
     if request.method == 'GET':
         keys = r.keys("project_group:*")
-        project_groups = {}
+        project_groups = []
         for key in keys:
-            group = r.lrange(key, 0, -1)
-            group_id = key.split(":")[1]
-            project_groups[group_id] = group
+            group = r.hgetall(key)
+            group['id'] = key.split(':')[1]
+            group['attached_projects'] = json.loads(group['attached_projects'])
+            project_groups.append(group)
         return JSONResponse(project_groups, status=status.HTTP_200_OK)
 
     if request.method == 'POST':
@@ -212,7 +213,7 @@ def add_projects_group(request):
             return JSONResponse('Tenant group cannot be empty',
                                 status=status.HTTP_400_BAD_REQUEST)
         gtenant_id = r.incr("project_groups:id")
-        r.rpush('project_group:' + str(gtenant_id), *data)
+        r.hmset('project_group:' + str(gtenant_id), data)
         return JSONResponse('Tenant group has been added to the registry', status=status.HTTP_201_CREATED)
 
     return JSONResponse('Method ' + str(request.method) + ' not allowed.', status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -232,7 +233,8 @@ def projects_group_detail(request, group_id):
     if request.method == 'GET':
         key = 'project_group:' + str(group_id)
         if r.exists(key):
-            group = r.lrange(key, 0, -1)
+            group = r.hgetall(key)
+            group['attached_projects'] = json.loads(group['attached_projects'])
             return JSONResponse(group, status=status.HTTP_200_OK)
         else:
             return JSONResponse('The tenant group with id:  ' + str(group_id) + ' does not exist.', status=status.HTTP_404_NOT_FOUND)
@@ -241,14 +243,11 @@ def projects_group_detail(request, group_id):
         key = 'project_group:' + str(group_id)
         if r.exists(key):
             data = JSONParser().parse(request)
-            if not data:
-                return JSONResponse('Tenant group cannot be empty',
-                                    status=status.HTTP_400_BAD_REQUEST)
-            pipe = r.pipeline()
-            # the following commands are buffered in a single atomic request (to replace current contents)
-            if pipe.delete(key).rpush(key, *data).execute():
+            try:
+                r.hmset(key, data)
                 return JSONResponse('The members of the tenants group with id: ' + str(group_id) + ' has been updated', status=status.HTTP_201_CREATED)
-            return JSONResponse('Error storing the tenant group in the DB', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except:
+                return JSONResponse('Error storing the tenant group in the DB', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
             return JSONResponse('The tenant group with id:  ' + str(group_id) + ' does not exist.', status=status.HTTP_404_NOT_FOUND)
 
