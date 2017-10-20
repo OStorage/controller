@@ -25,8 +25,8 @@ ANALYZERS_DIR = os.path.join('/opt', 'crystal', 'job_analyzers')
 JOBS_DIR = os.path.join('/opt', 'crystal', 'jobs')
 CONTROLLERS_DIR = os.path.join('/opt', 'crystal', 'controllers')
 
-NATIVE_FILTER_KEYS = ('id', 'filter_name', 'filter_type', 'language', 'dsl_name', 'dependencies', 'main', 'put', 'get', 'execution_server', 'reverse', 'path')
-STORLET_FILTER_KEYS = ('id', 'filter_name', 'filter_type', 'language', 'dsl_name', 'interface_version', 'dependencies', 'main', 'put', 'get', 'execution_server', 'reverse', 'path')
+NATIVE_FILTER_KEYS = ('id', 'filter_name', 'filter_type', 'language', 'dsl_name', 'dependencies', 'main', 'put', 'get', 'valid_parameters', 'execution_server', 'reverse', 'path')
+STORLET_FILTER_KEYS = ('id', 'filter_name', 'filter_type', 'language', 'dsl_name', 'interface_version', 'dependencies', 'main', 'put', 'get', 'valid_parameters', 'execution_server', 'reverse', 'path')
 DEPENDENCY_KEYS = ('id', 'name', 'version', 'permissions', 'path')
 
 # Quick-start development settings - unsuitable for production
