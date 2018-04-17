@@ -626,6 +626,7 @@ def node_restart(request, server_type, node_id):
         ssh_client.connect(node['ip'], username=node['ssh_username'], password=node['ssh_password'])
 
         try:
+            ssh_client.exec_command('sudo chown -R root.swift /etc/swift')
             ssh_client.exec_command('sudo swift-init main restart')
         except SSHException:
             ssh_client.close()
