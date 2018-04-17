@@ -356,9 +356,18 @@ def deploy_storage_policy(request, storage_policy_id):
                 ringdata.save(deploy_gzip_filename)
 
                 data = r.hgetall(key)
-                update_sp_files(settings.SWIFT_CFG_DEPLOY_DIR, storage_policy_id, {'name': data['name'],
-                                                                                   'deprecated': data['deprecated'],
-                                                                                   'default': data['default']})
+                if data['policy_type'] == 'EC':
+                    update_sp_files(settings.SWIFT_CFG_DEPLOY_DIR, storage_policy_id, {'name': data['name'],
+                                                                                       'deprecated': data['deprecated'],
+                                                                                       'default': data['default'],
+                                                                                       'policy_type': 'erasure_coding',
+                                                                                       'ec_type': data['ec_type'],
+                                                                                       'ec_num_data_fragments': data['ec_num_data_fragments'],
+                                                                                       'ec_num_parity_fragments': data['ec_num_parity_fragments']})
+                else:
+                    update_sp_files(settings.SWIFT_CFG_DEPLOY_DIR, storage_policy_id, {'name': data['name'],
+                                                                                       'deprecated': data['deprecated'],
+                                                                                       'default': data['default']})
 
                 copyfile(tmp_policy_file, deploy_policy_file)
                 rsync_dir_with_nodes(settings.SWIFT_CFG_DEPLOY_DIR, '/etc/swift')
