@@ -626,7 +626,19 @@ def node_restart(request, server_type, node_id):
         ssh_client.connect(node['ip'], username=node['ssh_username'], password=node['ssh_password'])
 
         try:
-            ssh_client.exec_command('sudo swift-init main restart')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-proxy')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-account-auditor')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-account-reaper')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-account-replicator')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-account')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-container-auditor')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-container-replicator')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-container-updater')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-container')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-object-auditor')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-object-replicator')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-object-updater')
+            ssh_client.exec_command('sudo systemctl restart openstack-swift-object')
         except SSHException:
             ssh_client.close()
             logger.error('An error occurred restarting Swift nodes')
