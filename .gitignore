@@ -107,3 +107,4 @@ sds_controller/storlets/dependencies_jar/
 /.project
 /.pydevproject
 /.gitignore
+.flake8

@@ -48,6 +48,7 @@ def update_sp_files(path, policy_id, d):
     with open(swift_file, 'wb') as configfile:
         config_parser.write(configfile)
 
+
 def get_policy_file_path(dir_path, policy_id):
     object_builder_key = 'object.builder' if policy_id == '0' else 'object-' + policy_id + '.builder'
     return os.path.join(dir_path, object_builder_key)
@@ -99,7 +100,7 @@ def storage_policies(request):
             ring.save(get_policy_file_path(settings.SWIFT_CFG_TMP_DIR, sp_id))
 
             r.hmset(key, data)
-        except:
+        except Exception:
             return JSONResponse('Error creating the Storage Policy', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return JSONResponse('Account created successfully', status=status.HTTP_201_CREATED)
@@ -122,7 +123,7 @@ def deployed_storage_policies(request):
         config_parser.read(swift_file)
 
         deployed_storage_policy_list = [sp for sp in keys if config_parser.has_section(sp)]
-        
+
         storage_policy_list = []
         for key in deployed_storage_policy_list:
             storage_policy = r.hgetall(key)
@@ -130,7 +131,7 @@ def deployed_storage_policies(request):
             storage_policy['id'] = str(key).split(':')[-1]
             storage_policy['devices'] = json.loads(storage_policy['devices'])
             storage_policy_list.append(storage_policy)
-            
+
         return JSONResponse(storage_policy_list, status=status.HTTP_200_OK)
 
     return JSONResponse('Only HTTP POST requests allowed.', status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -184,7 +185,7 @@ def storage_policy_detail(request, storage_policy_id):
                 policy_file_path_dep = get_policy_file_path(settings.SWIFT_CFG_DEPLOY_DIR, storage_policy_id)
                 if os.path.isfile(policy_file_path_dep):
                     os.remove(policy_file_path_dep)
-                
+
                 gzip_policy_file_dep = policy_file_path_dep.replace('builder', 'ring.gz')
                 if os.path.isfile(gzip_policy_file_dep):
                     os.remove(gzip_policy_file_dep)
@@ -397,14 +398,14 @@ def load_swift_policies(request):
             try:
                 sftp_client = ssh_client.open_sftp()
                 swift_etc_path = '/etc/swift/'
-                remote_swift_file = swift_etc_path+'swift.conf'
+                remote_swift_file = swift_etc_path + 'swift.conf'
                 local_swift_file_deploy = get_swift_cfg_path(settings.SWIFT_CFG_DEPLOY_DIR)
                 sftp_client.get(remote_swift_file, local_swift_file_deploy)
 
                 remote_file_list = sftp_client.listdir(swift_etc_path)
                 for r_file in remote_file_list:
                     if r_file.startswith('object') and r_file.endswith('.builder'):
-                        remote_file = swift_etc_path+r_file
+                        remote_file = swift_etc_path + r_file
                         local_file_tmp = os.path.join(settings.SWIFT_CFG_TMP_DIR, r_file)
                         local_file_deploy = os.path.join(settings.SWIFT_CFG_DEPLOY_DIR, r_file)
                         sftp_client.get(remote_file, local_file_tmp)
@@ -457,7 +458,7 @@ def load_swift_policies(request):
                         try:
                             inet_aton(device['ip'])
                             device['ip'] = next((nodes_data[node]['name'] for node in nodes_data if nodes_data[node]['ip'] == device['ip']), device['ip'])
-                        except:
+                        except Exception:
                             pass
                         devices.append((device['ip'] + ':' + device['device'], device['id']))
 
@@ -563,7 +564,7 @@ def node_detail(request, server_type, node_id):
     except RedisError:
         return JSONResponse('Error connecting with DB', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    key = server_type+"_node:" + node_id
+    key = server_type + "_node:" + node_id
     if request.method == 'GET':
         if r.exists(key):
             node = r.hgetall(key)
@@ -615,7 +616,7 @@ def node_restart(request, server_type, node_id):
     except RedisError:
         return JSONResponse('Error connecting with DB', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    key = server_type+"_node:" + node_id
+    key = server_type + "_node:" + node_id
     logger.debug('Restarting node: ' + str(key))
 
     if request.method == 'PUT':
@@ -626,19 +627,15 @@ def node_restart(request, server_type, node_id):
         ssh_client.connect(node['ip'], username=node['ssh_username'], password=node['ssh_password'])
 
         try:
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-proxy')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-account-auditor')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-account-reaper')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-account-replicator')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-account')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-container-auditor')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-container-replicator')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-container-updater')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-container')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-object-auditor')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-object-replicator')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-object-updater')
-            ssh_client.exec_command('sudo systemctl restart openstack-swift-object')
+            swift_services = ['openstack-swift-proxy', 'openstack-swift-account-auditor',
+                              'openstack-swift-account-reaper', 'openstack-swift-account-replicator',
+                              'openstack-swift-account', 'openstack-swift-container-auditor',
+                              'openstack-swift-container-replicator', 'openstack-swift-container-updater',
+                              'openstack-swift-container', 'openstack-swift-object-auditor',
+                              'openstack-swift-object-replicator', 'openstack-swift-object-updater',
+                              'openstack-swift-object']
+            for service in swift_services:
+                ssh_client.exec_command('sudo systemctl restart %s' % service)
         except SSHException:
             ssh_client.close()
             logger.error('An error occurred restarting Swift nodes')
@@ -812,10 +809,10 @@ def create_container(request, project_id, container_name):
             headers = JSONParser().parse(request)
             token = get_token_connection(request)
             url = settings.SWIFT_URL + "/AUTH_" + project_id
-    
+
             swift_client.put_container(url, token, container_name, headers)
         except Exception as ex:
-            return JSONResponse(ex.message, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+            return JSONResponse(ex.message, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return JSONResponse("Container Policy updated correctly", status=status.HTTP_201_CREATED)
     return JSONResponse('Method ' + str(request.method) + ' not allowed.', status=status.HTTP_405_METHOD_NOT_ALLOWED)
