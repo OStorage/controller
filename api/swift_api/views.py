@@ -361,9 +361,9 @@ def deploy_storage_policy(request, storage_policy_id):
                           'default': data['default']}
                 if data['policy_type'] == 'EC':
                     policy.update({'policy_type': 'erasure_coding',
-                                  'ec_type': data['ec_type'],
-                                  'ec_num_data_fragments': data['ec_num_data_fragments'],
-                                  'ec_num_parity_fragments': data['ec_num_parity_fragments']})
+                                   'ec_type': data['ec_type'],
+                                   'ec_num_data_fragments': data['ec_num_data_fragments'],
+                                   'ec_num_parity_fragments': data['ec_num_parity_fragments']})
                     update_sp_files(settings.SWIFT_CFG_DEPLOY_DIR, storage_policy_id, policy)
                 else:
                     update_sp_files(settings.SWIFT_CFG_DEPLOY_DIR, storage_policy_id, policy)
