@@ -423,13 +423,13 @@ def load_swift_policies(request):
         files = glob.glob(pattern)
 
         try:
+            sp_id_list = []
             for builder_file in files:
                 builder = RingBuilder.load(builder_file)
                 if '-' in builder_file:
                     sp_id = builder_file.split('.')[0].split('-')[-1]
                     key = 'storage-policy:' + sp_id
-                    if int(sp_id) > r.get('storage-policies:id'):
-                        r.set('storage-policies:id', sp_id)
+                    sp_id_list.append(int(sp_id))
                 else:
                     key = 'storage-policy:0'
 
@@ -454,6 +454,8 @@ def load_swift_policies(request):
                         nodes_data[node] = r.hgetall(node)
 
                     for device in builder.devs:
+                        if device is None:
+                            continue
                         try:
                             inet_aton(device['ip'])
                             device['ip'] = next((nodes_data[node]['name'] for node in nodes_data if nodes_data[node]['ip'] == device['ip']), device['ip'])
@@ -467,15 +469,33 @@ def load_swift_policies(request):
                             'time': builder.min_part_hours,
                             'devices': json.dumps(devices),
                             'deployed': 'True',
-                            'policy_type': policy_type if policy_type else 'Replication',
                             'partition_power': int(math.log(builder.parts, 2)),
                             'replicas': int(builder.replicas)
                             }
+                    if policy_type == 'Replication':
+                        data.update({'policy_type': policy_type if policy_type else 'Replication'})
+                    else:
+                        ec_type = config_parser.get(key, 'ec_type') if config_parser.has_option(key, 'ec_type') else 'liberasurecode_rs_vand'
+                        ec_num_parity_fragments = config_parser.get(key, 'ec_num_parity_fragments')
+                        ec_num_data_fragments = config_parser.get(key, 'ec_num_data_fragments')
+                        ec_duplication_factor = config_parser.get(key, 'ec_duplication_factor') if config_parser.has_option(key, 'ec_duplication_factor') else '1'
+                        ec_object_segment_size = config_parser.get(key, 'ec_object_segment_size') if config_parser.has_option(key, 'ec_object_segment_size') else '1048576'
+                        data.update({'policy_type': 'EC',
+                                     'ec_type': ec_type,
+                                     'ec_num_data_fragments': ec_num_data_fragments,
+                                     'ec_num_parity_fragments': ec_num_parity_fragments,
+                                     'ec_duplication_factor': ec_duplication_factor,
+                                     'ec_object_segment_size': ec_object_segment_size})
 
                     r.hmset(key, data)
 
                 else:
                     pass
+            if len(sp_id_list): 
+                max_sp_id = max(sp_id_list)
+                r.set('storage-policies:id', max_sp_id)
+            else:
+                pass
 
         except RedisError:
                 return JSONResponse('Policies could not be loaded', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
