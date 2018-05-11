@@ -264,8 +264,8 @@ def storage_policy_disks(request, storage_policy_id):
             object_node_id, device_id = disk.split(':')
             object_node = r.hgetall('object_node:' + object_node_id)
             # device_detail = json.loads(object_node['devices'])[device_id]
-            region = r.hgetall('region:' + object_node['region_id'])['name']
-            zone = r.hgetall('zone:' + object_node['zone_id'])['name']
+            region = object_node['region_id']
+            zone = object_node['zone_id']
 
             tmp_policy_file = get_policy_file_path(settings.SWIFT_CFG_TMP_DIR, storage_policy_id)
 
